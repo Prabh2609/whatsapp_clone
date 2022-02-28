@@ -50,7 +50,8 @@ dependencies:
   firebase_database: ^9.0.6
   image_cropper: ^1.5.0
   firebase_storage: ^10.2.7
-  firebase_in_app_messaging: ^0.6.0+7
+  flutter_randomcolor: ^1.0.12
+  file_picker: ^4.4.0
 
 dev_dependencies:
   flutter_test:

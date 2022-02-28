@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:circular_profile_avatar/circular_profile_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contacts_service/contacts_service.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -115,6 +116,16 @@ class _ChatWindowState extends State<ChatWindow> {
                 name:obj["name"],
                 size:obj["size"],
                 uri:obj["uri"],
+              );
+            }else if(obj["type"] == "file"){
+              message = types.FileMessage(
+                author: types.User(
+                  id:obj["author"]["id"]
+                ),
+                id: obj["id"],
+                name:obj["name"],
+                uri: obj["uri"],
+                size:obj["size"]
               );
             }
 
@@ -237,8 +248,28 @@ class _ChatWindowState extends State<ChatWindow> {
 
   }
 
-  void _handleFileSelection(){
+  void _handleFileSelection()async{
+    final result = await FilePicker.platform.pickFiles(type: FileType.any);
+    if(result != null && result.files.single.path != null){
+      String downloadUrl='';
+      await FirebaseStorage.instance
+          .ref("${FirebaseAuth.instance.currentUser!.uid}/${roomKey}/${randomString()}")
+          .putFile(File(result.files.single.path!))
+          .whenComplete(()async{
+        downloadUrl = await FirebaseStorage.instance.ref("${FirebaseAuth.instance.currentUser!.uid}/profile_image").getDownloadURL();
 
+      }).then((value){
+        final message = types.FileMessage(
+          author: _user,
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+          id: randomString(),
+          name:result.files.single.name,
+          size:result.files.single.size,
+          uri:downloadUrl,
+        );
+        _addMessage(message, "File");
+      });
+    }
   }
 
   void _handleAttachmentPressed() {

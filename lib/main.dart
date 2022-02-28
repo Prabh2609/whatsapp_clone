@@ -177,6 +177,21 @@ class _ChatListState extends State<ChatList> {
     });
   }
 
+  String getTime(String timeStamp){
+    DateTime now = DateTime.now();
+    DateTime time = DateTime.fromMillisecondsSinceEpoch(int.parse(timeStamp));
+    int difference = now.difference(time).inDays;
+
+
+    if(difference==0){
+      return "${time.hour}:${time.minute}";
+    }else if(difference == -1){
+      return "Yesterday";
+    }else{
+      return "${time.day}/${time.month}";
+    }
+  }
+
   Future _getContacts(String phone) async {
     final contact = await ContactsService.getContactsForPhone(phone);
 
@@ -195,6 +210,7 @@ class _ChatListState extends State<ChatList> {
             _getContacts(_list[index]["contact_no"]);
             String recentMessage = _list[index]["recentMessage"];
             _contact.identifier = _list[index]["receiverId"];
+
             return ListTile(
               title: Text(_contact.displayName != null
                   ? _contact.displayName
@@ -207,7 +223,7 @@ class _ChatListState extends State<ChatList> {
                 child: Image.network(_list[index]["profile_pic"]),
               ),
               subtitle: Text(recentMessage),
-              // trailing: Text("time"),
+              trailing: Text(getTime(_list[index]["timeStamp"]),style: TextStyle(fontWeight:FontWeight.bold),),
               onTap: () {
                 Navigator.of(context).push(
                     MaterialPageRoute(builder: (context) =>
