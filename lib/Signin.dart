@@ -199,7 +199,8 @@ class _VerificationProcessState extends State<_VerificationProcess> {
                     )
 
             );
-
+            print(e.code);
+            print(e.stackTrace);
             // print('The provided phone number is not valid.');
           }
         },

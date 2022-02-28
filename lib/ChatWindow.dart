@@ -1,5 +1,7 @@
 import 'dart:collection';
+import 'dart:typed_data';
 
+import 'package:circular_profile_avatar/circular_profile_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -19,7 +21,11 @@ String randomString() {
 
 class ChatWindow extends StatefulWidget {
   final Contact contact;
-  const ChatWindow({Key? key,required this.contact}) : super(key: key);
+  final String title;
+  final String profile_pic;
+  final String contact_number;
+
+  const ChatWindow({Key? key,required this.contact, required this.title,required this.profile_pic,required this.contact_number}) : super(key: key);
 
   @override
   _ChatWindowState createState() => _ChatWindowState();
@@ -48,32 +54,38 @@ class _ChatWindowState extends State<ChatWindow> {
                   id: user.uid
                 );
                 currentUser = user;
-                roomKey = (widget.contact.phones!.elementAt(0).value!+currentUser.phoneNumber!).hashCode.toString();
               });
-              _readMessages(roomKey);
+              _getRoomKey();
             }
     });
 
   }
 
+  Future<void> _getRoomKey()async{
+    DatabaseReference inboxRef = FirebaseDatabase.instance.ref('inbox/${currentUser.uid}/${widget.contact_number}');
+    String getRoomKey = await inboxRef.child("roomKey").get().then((DataSnapshot snapshot) => snapshot.value.toString());
+
+    if(getRoomKey == "null"){
+      // FIRST TIME USER , LETS CREATE ONE ROOM KEY
+      setState(() {
+        roomKey = (widget.contact.phones!.elementAt(0).value!+currentUser.phoneNumber!).hashCode.toString();
+      });
+    }else{
+      // print("OLD CHAT with room key : ${getRoomKey}");
+      setState(() {
+        roomKey = getRoomKey;
+      });
+
+    //  ROOM ALREADY EXISTS
+    }
+    _readMessages(roomKey);
+  }
+
   Future<void> _readMessages(String key)async{
     DatabaseReference databaseReference= FirebaseDatabase.instance.ref("rooms/$key");
-    print('inside read messages');
-    databaseReference.get().then((DataSnapshot snapshot){
-      triedCombinations++;
-      print('getting values');
-      if(!snapshot.exists ){
-        //try different Id
-        if(triedCombinations<=2){
-          String roomId = (currentUser.phoneNumber!+widget.contact.phones!.elementAt(0).value!).hashCode.toString();
-          setState(() {
-            roomKey = roomId;
-          });
-          _readMessages(roomId);
-        }
-      }else{
+    databaseReference.get().then((DataSnapshot snapshot) {
+      if(snapshot.exists){
         databaseReference.onValue.listen((DatabaseEvent event) {
-          // print(event.snapshot.value);
           final data = event.snapshot.children;
           List<types.TextMessage> messages = [];
           data.forEach((element) {
@@ -85,12 +97,12 @@ class _ChatWindowState extends State<ChatWindow> {
             });
             print(obj["author"]["id"]);
             message = types.TextMessage(
-              text: obj["text"],
-              author: types.User(
-                id:obj["author"]["id"]
-              ),
-              id: obj["id"],
-              createdAt: obj["createdAt"]
+                text: obj["text"],
+                author: types.User(
+                    id:obj["author"]["id"]
+                ),
+                id: obj["id"],
+                createdAt: obj["createdAt"]
             );
             if(!_messages.contains(message)){
               setState(() {
@@ -99,20 +111,31 @@ class _ChatWindowState extends State<ChatWindow> {
             }
 
           });
-
         });
-
       }
     });
-  }
 
+  }
+  String convertUint8ListToString(Uint8List uint8list) {
+    return String.fromCharCodes(uint8list);
+  }
 
   @override
   Widget build(BuildContext context) {
 
     return Scaffold(
         appBar: AppBar(
-          title: Text(widget.contact.displayName!),
+          leading: CircularProfileAvatar(
+            '',
+            radius: 20,
+            backgroundColor: Colors.teal,
+            borderWidth: 0,
+            borderColor: Colors.teal,
+
+            child: Image.network(widget.profile_pic),
+
+          ),
+          title: Text(widget.title),
           actions: [
             IconButton(onPressed: () {}, icon: const Icon(Icons.videocam)),
             IconButton(onPressed: () {}, icon: const Icon(Icons.call)),
@@ -163,35 +186,46 @@ class _ChatWindowState extends State<ChatWindow> {
             ),
             messages: _messages,
             onAttachmentPressed: _handleAttachmentPressed,
-            onSendPressed: _handleSendPressed,
+            onSendPressed:_handleSendPressed,
             user: _user,
           ),
         ));
   }
 
   void _addMessage(types.Message message) async{
+    print("Room Key : ${roomKey}");
     DatabaseReference databaseReference = FirebaseDatabase.instance.ref('rooms');
     DatabaseReference inboxSender = FirebaseDatabase.instance.ref('inbox/${currentUser.uid}');
-    // String contactNumber =widget.contact.phones!.elementAt(0).value!.replaceAll(new RegExp(r'[^0-9]'),'');
-    // await FirebaseFirestore.instance.collection("Users").where("Phone_Number",isEqualTo: contactNumber);
-    // DatabaseReference inboxReceiver =
-    
+
+    // String recieverID = await FirebaseFirestore.instance.collection("Users").where()
+
+
+    DatabaseReference inboxReceiver = FirebaseDatabase.instance.ref('inbox/${widget.contact.identifier}');
+    print("IDENTIFIER : ${widget.contact.identifier}");
+    inboxReceiver.child(currentUser.phoneNumber!.replaceAll("+91", "")).set({
+      "timeStamp":ServerValue.timestamp,
+      "contact_no":currentUser.phoneNumber!.replaceAll("+91", ""),
+      'recentMessage':message.type.toString() == "MessageType.text"?message.toJson()["text"]:message.type.toString(),
+      'profile_pic':currentUser.photoURL,
+      'receiverId':currentUser.uid,
+      "roomKey":roomKey
+    }).then((value) => print("Sender updated"));
+
     print(message.toJson()["text"]);
     print('hi');
-    String contactNumber =widget.contact.phones!.elementAt(0).value!.replaceAll(new RegExp(r'[^0-9]'),'');
+
     databaseReference.child(roomKey).push().set(message.toJson());
-    inboxSender.child(contactNumber).set({
+    inboxSender.child(widget.contact_number).set({
       "timeStamp":ServerValue.timestamp,
-      "contact_no":contactNumber,
+      "contact_no":widget.contact_number,
       'recentMessage':message.type.toString() == "MessageType.text"?message.toJson()["text"]:message.type.toString(),
-      'profile_pic':''
-    });
+      'profile_pic':widget.profile_pic,
+      'receiverId':widget.contact.identifier,
+       "roomKey":roomKey
+    }).then((value) => print("Receiver updated"));
     if(_messages.isEmpty){
       _readMessages(roomKey);
     }
-    // setState(() {
-    //   _messages.insert(0, message);
-    // });
   }
 
   void _handleFileSelection(){
@@ -262,7 +296,9 @@ class _ChatWindowState extends State<ChatWindow> {
           size: bytes.length,
           uri: result.path,
           width: image.width.toDouble());
-      _addMessage(message);
+      // _addMessage(message);
+
+      print(message);
     }
   }
 

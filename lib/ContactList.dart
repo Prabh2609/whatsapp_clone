@@ -1,5 +1,7 @@
 import 'dart:collection';
+import 'dart:typed_data';
 
+import 'package:circular_profile_avatar/circular_profile_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -40,6 +42,13 @@ class _ContactListState extends State<ContactList> {
     }
   }
 
+  Uint8List convertStringToUint8List(String str) {
+    final List<int> codeUnits = str.codeUnits;
+    final Uint8List unit8List = Uint8List.fromList(codeUnits);
+
+    return unit8List;
+  }
+
   Future<PermissionStatus> _getContactsPermission()async{
     PermissionStatus permission = await Permission.contacts.status;
     if (permission != PermissionStatus.granted &&
@@ -67,10 +76,15 @@ class _ContactListState extends State<ContactList> {
             HashMap map = new HashMap();
             map.putIfAbsent('Phone_Number', () => element.get('Phone_Number'));
             map.putIfAbsent('profile_pic', () => element.get('Image'));
+            map.putIfAbsent("userId", () => element.get('Id'));
 
+
+
+            if(!updatedPhoneNumers.contains(map)){
+              updatedPhoneNumers.add(map);
+            }
             if(!phoneNumbers.contains(element.get('Phone_Number'))) {
               phoneNumbers.add(element.get('Phone_Number'));
-
             }
           });
           print(phoneNumbers);
@@ -78,14 +92,13 @@ class _ContactListState extends State<ContactList> {
             try{
               if(contact.phones!.isNotEmpty){
                 String contactNumber =contact.phones!.elementAt(0).value!.replaceAll(new RegExp(r'[^0-9]'),'');
-                if(phoneNumbers.contains(contactNumber)){
-                  if(!_contactList.contains(contact)) {
-
-                    _contactList.add(contact);
-                  }
-
-                  // print('added');
-
+                
+                var check = updatedPhoneNumers.firstWhere((element) => element["Phone_Number"]==contactNumber,orElse: ()=>new HashMap());
+                if(check.isNotEmpty){
+                  print(check["userId"]);
+                  contact.identifier = check["userId"];
+                  contact.avatar = convertStringToUint8List(check["profile_pic"]);
+                  _contactList.add(contact);
                 }
               }
             }on Exception catch(e){
@@ -108,12 +121,11 @@ class _ContactListState extends State<ContactList> {
 
         }
       });
-    // if(!await ContactsService.requestPermission(readonly: true)){
-    //   setState(()=>_permissionDenied=true);
-    // }else{
-    //   final contacts = await ContactSer.getContacts();
-    //   setState(()=>_contacts = contacts);
-    // }
+
+  }
+
+  String convertUint8ListToString(Uint8List uint8list) {
+    return String.fromCharCodes(uint8list);
   }
 
   @override
@@ -144,18 +156,7 @@ class _ContactListState extends State<ContactList> {
         )
       );
     }
-    // _contacts?.forEach((contact) {
-    //   try{
-    //     print(contact.displayName!);
-    //     if(contact.phones!.isNotEmpty){
-    //       phoneNumbers.add(contact.phones!.elementAt(0).value!);
-    //     }
-    //     // phoneNumbers.add(contact.phones!.elementAt(0).value!);
-    //   }on Exception catch(e){
-    //     print(e.runtimeType);
-    //   }
-    // });
-    // _contacts?.forEach((contact)=>phoneNumbers.add(contact.phones!.elementAt(0).value!));
+
 
     if(state == 'Does_Not_Exists'){
       return const Center(
@@ -165,15 +166,30 @@ class _ContactListState extends State<ContactList> {
         ),
       );
     }if(state == 'Loaded') {
+      print(convertUint8ListToString(_contactList.elementAt(0).avatar!));
       return ListView.builder(
+          padding: EdgeInsets.all(8),
           itemCount: _contactList.length,
           itemBuilder: (context,index)=>ListTile(
-            title: Text(_contactList[index].displayName!),
-
+            tileColor: Colors.white70,
+            title: Text(_contactList[index].displayName!,style: TextStyle(fontSize: 18)),
+            leading: CircularProfileAvatar(
+              '',
+              child: Image.network(convertUint8ListToString(_contactList.elementAt(0).avatar!)),
+              radius: 25,
+            ),
             onTap: (){
+              // print("${_contactList[index].identifier} HI");
+
               Navigator.of(context).push(
                   MaterialPageRoute(
-                      builder: (context)=>ChatWindow(contact:_contactList[index])
+
+                      builder: (context)=>ChatWindow(
+                          contact:_contactList[index],
+                          title: _contactList[index].displayName!=null? _contactList[index].displayName!:"GHOST ACCOUNT",
+                          profile_pic:convertUint8ListToString(_contactList[index].avatar!),
+                          contact_number: _contactList[index].phones!.elementAt(0).value!.replaceAll(new RegExp(r'[^0-9]'),''),
+                      )
                   )
               );
             },
