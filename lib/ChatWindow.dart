@@ -1,11 +1,13 @@
 import 'dart:collection';
 import 'dart:typed_data';
-
+import 'dart:ui';
+import 'dart:io';
 import 'package:circular_profile_avatar/circular_profile_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contacts_service/contacts_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' as types;
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
@@ -78,6 +80,7 @@ class _ChatWindowState extends State<ChatWindow> {
 
     //  ROOM ALREADY EXISTS
     }
+    print("IDENTIFIER : ${widget.contact.identifier}");
     _readMessages(roomKey);
   }
 
@@ -93,17 +96,28 @@ class _ChatWindowState extends State<ChatWindow> {
             HashMap<String,dynamic> obj = new HashMap();
             element.children.forEach((msg) {
               obj.putIfAbsent(msg.key.toString(), () => msg.value);
-
             });
-            print(obj["author"]["id"]);
-            message = types.TextMessage(
-                text: obj["text"],
+            if(obj["type"]=="text"){
+              message = types.TextMessage(
+                  text: obj["text"],
+                  author: types.User(
+                      id:obj["author"]["id"]
+                  ),
+                  id: obj["id"],
+                  createdAt: obj["createdAt"]
+              );
+            }else if(obj["type"]=="image"){
+              message = types.ImageMessage(
                 author: types.User(
-                    id:obj["author"]["id"]
+                  id: obj["author"]["id"]
                 ),
                 id: obj["id"],
-                createdAt: obj["createdAt"]
-            );
+                name:obj["name"],
+                size:obj["size"],
+                uri:obj["uri"],
+              );
+            }
+
             if(!_messages.contains(message)){
               setState(() {
                 _messages.insert(0, message);
@@ -192,40 +206,35 @@ class _ChatWindowState extends State<ChatWindow> {
         ));
   }
 
-  void _addMessage(types.Message message) async{
-    print("Room Key : ${roomKey}");
+  void _addMessage(types.Message message,String type) async{
     DatabaseReference databaseReference = FirebaseDatabase.instance.ref('rooms');
     DatabaseReference inboxSender = FirebaseDatabase.instance.ref('inbox/${currentUser.uid}');
 
-    // String recieverID = await FirebaseFirestore.instance.collection("Users").where()
-
-
     DatabaseReference inboxReceiver = FirebaseDatabase.instance.ref('inbox/${widget.contact.identifier}');
-    print("IDENTIFIER : ${widget.contact.identifier}");
+
     inboxReceiver.child(currentUser.phoneNumber!.replaceAll("+91", "")).set({
       "timeStamp":ServerValue.timestamp,
       "contact_no":currentUser.phoneNumber!.replaceAll("+91", ""),
-      'recentMessage':message.type.toString() == "MessageType.text"?message.toJson()["text"]:message.type.toString(),
+      'recentMessage':message.type.toString() == "MessageType.text"?message.toJson()["text"]:message.type.toString().split(".")[1],
       'profile_pic':currentUser.photoURL,
       'receiverId':currentUser.uid,
       "roomKey":roomKey
-    }).then((value) => print("Sender updated"));
-
-    print(message.toJson()["text"]);
-    print('hi');
+    });
 
     databaseReference.child(roomKey).push().set(message.toJson());
     inboxSender.child(widget.contact_number).set({
       "timeStamp":ServerValue.timestamp,
       "contact_no":widget.contact_number,
-      'recentMessage':message.type.toString() == "MessageType.text"?message.toJson()["text"]:message.type.toString(),
+      'recentMessage':message.type.toString() == "MessageType.text"?message.toJson()["text"]:message.type.toString().split(".")[1],
       'profile_pic':widget.profile_pic,
       'receiverId':widget.contact.identifier,
        "roomKey":roomKey
-    }).then((value) => print("Receiver updated"));
+    });
+
     if(_messages.isEmpty){
       _readMessages(roomKey);
     }
+
   }
 
   void _handleFileSelection(){
@@ -276,14 +285,15 @@ class _ChatWindowState extends State<ChatWindow> {
     );
   }
 
-  void _handleImageSelection() async {
-    final result = await ImagePicker().pickImage(
-      imageQuality: 70,
-      maxWidth: 1440,
-      source: ImageSource.gallery,
-    );
+  Future uploadImage(XFile result)async{
+    String downloadUrl='';
+    await FirebaseStorage.instance
+        .ref("${FirebaseAuth.instance.currentUser!.uid}/${roomKey}/${randomString()}")
+        .putFile(File(result.path))
+        .whenComplete(()async{
+      downloadUrl = await FirebaseStorage.instance.ref("${FirebaseAuth.instance.currentUser!.uid}/profile_image").getDownloadURL();
 
-    if (result != null) {
+    }).then((TaskSnapshot snapshot)async{
       final bytes = await result.readAsBytes();
       final image = await decodeImageFromList(bytes);
 
@@ -294,11 +304,25 @@ class _ChatWindowState extends State<ChatWindow> {
           id: randomString(),
           name: result.name,
           size: bytes.length,
-          uri: result.path,
+          uri: downloadUrl,
           width: image.width.toDouble());
-      // _addMessage(message);
 
-      print(message);
+      _addMessage(message,"image");
+    });
+  }
+
+  void _handleImageSelection() async {
+    final result = await ImagePicker().pickImage(
+      imageQuality: 70,
+      maxWidth: 1440,
+      source: ImageSource.gallery,
+    );
+
+    if (result != null) {
+
+      uploadImage(result);
+
+      // print(message);
     }
   }
 
@@ -308,6 +332,6 @@ class _ChatWindowState extends State<ChatWindow> {
         createdAt: DateTime.now().millisecondsSinceEpoch,
         id: randomString(),
         text: message.text);
-    _addMessage(textMessage);
+    _addMessage(textMessage,"text");
   }
 }

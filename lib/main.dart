@@ -1,5 +1,4 @@
 import 'dart:collection';
-
 import 'package:circular_profile_avatar/circular_profile_avatar.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:contacts_service/contacts_service.dart';
@@ -7,13 +6,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:english_words/english_words.dart';
 import 'package:whatsapp_clone/ChatWindow.dart';
 import 'package:whatsapp_clone/StatusView.dart';
 import 'package:whatsapp_clone/splashScreen.dart';
 import './ContactList.dart';
-import './Settings.dart';
-import './Signin.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -183,6 +179,7 @@ class _ChatListState extends State<ChatList> {
 
   Future _getContacts(String phone) async {
     final contact = await ContactsService.getContactsForPhone(phone);
+
     setState(() {
       _contact = contact.first;
     });
@@ -197,9 +194,8 @@ class _ChatListState extends State<ChatList> {
           itemBuilder: (context, index) {
             _getContacts(_list[index]["contact_no"]);
             String recentMessage = _list[index]["recentMessage"];
-
+            _contact.identifier = _list[index]["receiverId"];
             return ListTile(
-
               title: Text(_contact.displayName != null
                   ? _contact.displayName
                   : _list[index]["contact_no"],
@@ -213,7 +209,6 @@ class _ChatListState extends State<ChatList> {
               subtitle: Text(recentMessage),
               // trailing: Text("time"),
               onTap: () {
-                _contact.identifier = _list[index]["Id"];
                 Navigator.of(context).push(
                     MaterialPageRoute(builder: (context) =>
                         ChatWindow(
